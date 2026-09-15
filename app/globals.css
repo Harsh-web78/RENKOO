@@ -1,0 +1,54 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /*
+   * Font stacks live here as plain CSS custom properties rather than via
+   * next/font/google so the build never depends on reaching Google's font
+   * CDN (this also means zero third-party font requests in production).
+   *
+   * --font-ui: design-system "UI typeface" role (Söhne, fallback Inter).
+   * --font-editorial: design-system "Editorial typeface" role (Untitled
+   * Serif, fallback Source Serif 4), used only on the public marketing site.
+   *
+   * To bring in the licensed faces later, load them with next/font/local
+   * in app/layout.tsx and point these two variables at the resulting
+   * generated variables — no component code needs to change.
+   */
+  --font-ui: -apple-system, "Segoe UI", ui-sans-serif, system-ui, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-editorial: "Iowan Old Style", "Palatino Linotype", Georgia, "Times New Roman", ui-serif, serif;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-paper text-ink font-sans antialiased;
+  }
+
+  /* Visible keyboard focus everywhere — never removed without replacement. */
+  :focus-visible {
+    outline: 2px solid #1f6e54;
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  ::selection {
+    background-color: #e4efe9;
+    color: #14171a;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
