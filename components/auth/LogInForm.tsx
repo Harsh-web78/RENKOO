@@ -36,6 +36,19 @@ export function LogInForm() {
     setEmailError(undefined);
 
     setSubmitting(true);
+    if (session.providerMode === "real") {
+      // Real mode: backend login → authenticated session → workspace
+      // context rebuilt from /auth/me inside logInReal. No fake users.
+      const result = await session.logInReal(email, password);
+      setSubmitting(false);
+      if (result.ok) {
+        const workspaceName = result.workspaceName ?? session.onboarding.workspaceName;
+        router.push(resumeRoute({ ...session.onboarding, workspaceName }));
+        return;
+      }
+      setFormError(result.message ?? "We couldn't log you in. Try again.");
+      return;
+    }
     const result = await mockAuthService.logIn(email, password);
     setSubmitting(false);
 

@@ -14,12 +14,19 @@ const statusLabel: Record<SearchConsoleProperty["status"], string> = {
 
 export function PropertySwitcher() {
   const session = useSession();
-  const [properties, setProperties] = useState<SearchConsoleProperty[]>([]);
+  const [mockProperties, setMockProperties] = useState<SearchConsoleProperty[]>([]);
   const activeId = session.onboarding.propertyId ?? "";
 
+  const isReal = session.providerMode === "real";
+
   useEffect(() => {
-    mockSearchConsoleService.listProperties("success").then(setProperties);
-  }, []);
+    if (isReal) return;
+    mockSearchConsoleService.listProperties("success").then(setMockProperties);
+  }, [isReal]);
+
+  // Real mode: the authorized property list comes from the backend session
+  // context (validated workspace membership) — never the mock service.
+  const properties = isReal ? session.realProperties : mockProperties;
 
   function handleChange(id: string) {
     session.setActiveProperty(id);

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { ApplyConfirmModal } from "./ApplyConfirmModal";
@@ -35,6 +36,13 @@ export function FixWorkspace({ propertyId, fix }: { propertyId: string; fix: Pro
   const isWaiting = fix.status === "applied" && !fix.outcome;
   const hasOutcome = Boolean(fix.outcome);
   const canAct = fix.status === "available" || fix.status === "reviewed";
+
+  // Real mode: backend owns the lifecycle; surface action errors and the
+  // honest measurement-pending notice instead of mock preview copy.
+  const isReal = session.providerMode === "real";
+  const realPending = isReal && session.realActionPending;
+  const realError = isReal ? session.realActionError : null;
+  const pendingNotice = isReal ? (session.measurementNotice[propertyId] ?? null) : null;
 
   return (
     <div className="mx-auto w-full max-w-content">
@@ -75,12 +83,18 @@ export function FixWorkspace({ propertyId, fix }: { propertyId: string; fix: Pro
 
       {canAct && (
         <div className="mt-6 flex flex-wrap gap-3">
-          <Button variant="primary" type="button" onClick={() => setApplyOpen(true)}>
+          <Button variant="primary" type="button" onClick={() => setApplyOpen(true)} disabled={realPending}>
             Mark as applied
           </Button>
-          <Button variant="ghost" type="button" onClick={() => setDismissOpen(true)}>
+          <Button variant="ghost" type="button" onClick={() => setDismissOpen(true)} disabled={realPending}>
             Not relevant
           </Button>
+        </div>
+      )}
+
+      {realError && (
+        <div className="mt-6">
+          <Alert tone="danger">{realError.message}</Alert>
         </div>
       )}
 
@@ -112,12 +126,25 @@ export function FixWorkspace({ propertyId, fix }: { propertyId: string; fix: Pro
           <p className="mt-4 text-body text-ink-muted">
             Results expected around {formatDate(fix.expectedMeasurementDate!)}.
           </p>
-          <Button variant="secondary" type="button" className="mt-4" onClick={() => session.checkForResults(propertyId)}>
+          {pendingNotice && (
+            <p className="mt-2 text-body text-ink-muted" role="status">
+              {pendingNotice}
+            </p>
+          )}
+          <Button
+            variant="secondary"
+            type="button"
+            className="mt-4"
+            onClick={() => session.checkForResults(propertyId)}
+            disabled={realPending}
+          >
             Check for results now
           </Button>
-          <p className="mt-2 text-caption text-ink-muted">
-            For this preview, you can check immediately instead of waiting for the real measurement window.
-          </p>
+          {!isReal && (
+            <p className="mt-2 text-caption text-ink-muted">
+              For this preview, you can check immediately instead of waiting for the real measurement window.
+            </p>
+          )}
         </div>
       )}
 

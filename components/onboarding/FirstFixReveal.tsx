@@ -40,6 +40,9 @@ export function FirstFixReveal() {
   const [evidenceOpen, setEvidenceOpen] = useState(false);
 
   const fix = session.onboarding.fix;
+  // In real mode the fix comes from backend ingestion (see runRealAnalysis);
+  // the demo labels below stay mock-only.
+  const isReal = session.providerMode === "real";
 
   useEffect(() => {
     if (session.hydrated && !fix) {
@@ -63,7 +66,7 @@ export function FirstFixReveal() {
           <div className={`mt-8 rounded-sm border border-line bg-surface p-6 ${fadeClass(stageAtLeast(stage, "signal"))}`}>
             <div className="flex items-center justify-between">
               <p className="text-caption font-medium tracking-wide text-ink-muted">Your next best fix</p>
-              <Badge tone="neutral">Demo data</Badge>
+              {!isReal && <Badge tone="neutral">Demo data</Badge>}
             </div>
 
             <p className={`mt-3 inline-block rounded-xs bg-surface-sunken px-2 py-1 text-caption text-ink-muted ${fadeClass(stageAtLeast(stage, "page"))}`}>
@@ -100,9 +103,11 @@ export function FirstFixReveal() {
             <Button variant="secondary" href="/home" className="mt-3 w-full">
               Go to your dashboard
             </Button>
-            <p className="mt-3 text-caption text-ink-muted">
-              Illustrative demo data for this preview — not a real customer&apos;s Search Console data.
-            </p>
+            {!isReal && (
+              <p className="mt-3 text-caption text-ink-muted">
+                Illustrative demo data for this preview — not a real customer&apos;s Search Console data.
+              </p>
+            )}
           </div>
         </div>
       </Container>

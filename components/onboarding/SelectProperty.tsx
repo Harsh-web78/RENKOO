@@ -25,6 +25,8 @@ function SelectPropertyInner() {
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(session.onboarding.propertyId);
 
+  const isReal = session.providerMode === "real";
+
   const load = useCallback(() => {
     setState("loading");
     mockSearchConsoleService
@@ -37,9 +39,24 @@ function SelectPropertyInner() {
   }, [scenario]);
 
   useEffect(() => {
+    if (isReal) {
+      // Real mode: the authorized property list comes from the backend
+      // session context — never the mock service.
+      if (!session.realSessionLoaded) {
+        setState("loading");
+        return;
+      }
+      if (session.realSessionError) {
+        setState("error");
+        return;
+      }
+      setProperties(session.realProperties);
+      setState(session.realProperties.length === 0 ? "empty" : "loaded");
+      return;
+    }
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scenario]);
+  }, [scenario, isReal, session.realSessionLoaded]);
 
   const filtered = properties.filter((p) => p.name.toLowerCase().includes(query.trim().toLowerCase()));
 
@@ -71,7 +88,15 @@ function SelectPropertyInner() {
               <Alert
                 tone="danger"
                 action={
-                  <Button variant="secondary" size="sm" type="button" onClick={load}>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    type="button"
+                    onClick={() => {
+                      if (isReal) void session.refreshSession();
+                      else load();
+                    }}
+                  >
                     Try again
                   </Button>
                 }

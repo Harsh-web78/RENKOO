@@ -1,0 +1,78 @@
+# docker-compose.yml — §20.1 of docs/backend-architecture.md
+# Local development stack: api (NestJS 3000) + db (Postgres 16) + redis (7)
+# Usage: docker compose up -d --build
+# Health endpoint: http://localhost:3000/api/v1/health
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    # Local-dev values are literals on purpose: the project `.env` mixes
+    # host-tooling URLs (localhost, for jest/prisma CLI on the host) with
+    # container-network URLs (db/redis hostnames), so `${VAR:-default}`
+    # interpolation would resolve the wrong host inside containers.
+    # Production MUST use `-f docker-compose.yml -f docker-compose.prod.yml`
+    # (required external values, no dev defaults) — see production-checklist.
+    environment:
+      DATABASE_URL: postgresql://renko:renko@db:5432/renko
+      REDIS_URL: redis://redis:6379
+      NODE_ENV: development
+      PORT: 3000
+      FRONTEND_URL: http://localhost:3001
+      SESSION_SECRET: dev-only-session-secret-change-in-production-32chars
+      GOOGLE_CLIENT_ID: placeholder-client-id.apps.googleusercontent.com
+      GOOGLE_CLIENT_SECRET: placeholder-client-secret
+      GOOGLE_REDIRECT_URI: http://localhost:3000/api/v1/auth/google/callback
+      GOOGLE_TOKEN_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      GSC_MOCK: "true"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: renko
+      POSTGRES_PASSWORD: renko
+      POSTGRES_DB: renko
+    ports:
+      - "5432:5432"
+      # 5433 shadow-free alias for host-side tooling (prisma CLI, jest E2E):
+      # a native PostgreSQL on this machine already binds 0.0.0.0:5432, so
+      # host connections to 5432 never reach this container. 5433 always does.
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U renko -d renko"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:

@@ -66,6 +66,25 @@ function AnalyzingInner() {
         if (runIdRef.current === runId) setStillWorking(true);
       }, STILL_WORKING_THRESHOLD_MS);
 
+      if (session.providerMode === "real") {
+        // Real mode: backend ingestion + backend recommendation. Every
+        // status and the resulting fix come from the API, never the mock.
+        const propertyId = session.onboarding.propertyId;
+        if (!propertyId) {
+          clearTimeout(stillWorkingTimer);
+          setTerminal("failed");
+          return () => clearTimeout(stillWorkingTimer);
+        }
+        void session
+          .runRealAnalysis(propertyId, (nextStatus) => {
+            if (runIdRef.current !== runId) return;
+            setStatus(nextStatus);
+            if (!nonTerminalStatuses.has(nextStatus)) setTerminal(nextStatus);
+          })
+          .finally(() => clearTimeout(stillWorkingTimer));
+        return () => clearTimeout(stillWorkingTimer);
+      }
+
       mockAnalysisService
         .runAnalysis(activeScenario, (nextStatus) => {
           if (runIdRef.current !== runId) return;

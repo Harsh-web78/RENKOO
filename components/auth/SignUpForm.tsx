@@ -47,6 +47,20 @@ export function SignUpForm() {
     if (hasError) return;
 
     setSubmitting(true);
+    if (session.providerMode === "real") {
+      // Real mode: backend signup creates the user + workspace and starts
+      // the authenticated session. No fake frontend users/workspaces.
+      const result = await session.signUpReal(email, password);
+      setSubmitting(false);
+      if (result.ok) {
+        const workspaceName = result.workspaceName ?? session.onboarding.workspaceName;
+        router.push(resumeRoute({ ...session.onboarding, workspaceName }));
+        return;
+      }
+      setFormError(result.message ?? "We couldn't create your account. Try again.");
+      if (result.errorCode === "email-exists") setShowLoginHint(true);
+      return;
+    }
     const result = await mockAuthService.signUp(email, password);
     setSubmitting(false);
 

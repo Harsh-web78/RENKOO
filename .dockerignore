@@ -1,0 +1,13 @@
+# Keep platform-specific and generated artifacts out of the Docker build
+# context (notably Windows node_modules — e.g. bcrypt native bindings —
+# must never leak into the Linux image).
+node_modules
+apps/api/node_modules
+apps/api/dist
+.next
+coverage
+apps/api/coverage
+.git
+.env
+*.log
+*.tsbuildinfo

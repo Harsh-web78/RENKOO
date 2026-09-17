@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Container } from "@/components/ui/Container";
 import { GscPermissionsDisclosure } from "./GscPermissionsDisclosure";
 import { ConnectScenario, mockSearchConsoleService } from "@/lib/mock/search-console-service";
+import { getApiBase } from "@/lib/data-contract/api-provider";
 import { GoogleConnectionStatus } from "@/lib/mock/types";
 import { resumeRoute } from "@/lib/mock/onboarding";
 import { useSession } from "@/lib/mock/session-context";
@@ -57,10 +58,30 @@ function ConnectSearchConsoleInner() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const scenarioParam = searchParams.get("scenario") as ConnectScenario | null;
+  // Backend OAuth return params (real mode only).
+  const oauthStatus = searchParams.get("status");
+  const oauthError = searchParams.get("error");
 
-  const alreadyConnected = session.onboarding.connection.status === "connected" && !scenarioParam;
+  const isReal = session.providerMode === "real";
+  const alreadyConnected = session.onboarding.connection.status === "connected" && !scenarioParam && !oauthStatus;
   const [phase, setPhase] = useState<Phase>(alreadyConnected ? "connected" : "idle");
   const [running, setRunning] = useState(false);
+  const [oauthReturnError, setOauthReturnError] = useState<string | null>(null);
+
+  // Real mode: handle the backend OAuth callback redirect
+  // (?status=connected or ?status=error&error=...). The backend is the
+  // connection source of truth — refresh the session to pick it up.
+  useEffect(() => {
+    if (!isReal || !oauthStatus) return;
+    if (oauthStatus === "connected") {
+      setPhase("connected");
+      void session.refreshSession();
+    } else if (oauthStatus === "error") {
+      setOauthReturnError(oauthError ?? "unknown_error");
+      setPhase("server-failure");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isReal, oauthStatus]);
 
   useEffect(() => {
     if (!scenarioParam || running) return;
@@ -94,6 +115,16 @@ function ConnectSearchConsoleInner() {
   }, [scenarioParam]);
 
   function startConnect() {
+    if (isReal) {
+      // Real mode: enter the backend OAuth flow (302 to Google). The
+      // workspace is validated server-side; the query value is a hint.
+      const workspaceId = session.realWorkspace?.id;
+      const base = getApiBase();
+      window.location.href = workspaceId
+        ? `${base}/auth/google/start?workspaceId=${encodeURIComponent(workspaceId)}`
+        : `${base}/auth/google/start`;
+      return;
+    }
     router.replace(`${pathname}?scenario=success`);
   }
 
@@ -120,7 +151,13 @@ function ConnectSearchConsoleInner() {
                 {session.onboarding.connection.googleAccountEmail
                   ? ` as ${session.onboarding.connection.googleAccountEmail}`
                   : ""}
-                . (Mock connection — no real Google account was accessed.)
+                {!isReal && " (Mock connection — no real Google account was accessed.)"}
+              </Alert>
+            )}
+
+            {oauthReturnError && (
+              <Alert tone="danger">
+                Google returned an error ({oauthReturnError}). Try connecting again, or continue with a different account.
               </Alert>
             )}
 

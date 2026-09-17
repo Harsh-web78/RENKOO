@@ -1,0 +1,274 @@
+// prisma/schema.prisma — §11 of docs/backend-architecture.md (verbatim)
+// The single source of truth for RENKO's PostgreSQL schema.
+// Prompt 6 scope: schema only; no auth/OAuth/GSC implementation yet.
+// Do not add tables beyond §11 without updating the architecture doc.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../apps/api/node_modules/.prisma/client"
+  // Runtime engines: "native" covers local dev/test machines; the
+  // linux-musl targets cover the node:20-alpine Docker runtime, whose
+  // system OpenSSL is 3.x (the default openssl-1.1.x engine cannot load
+  // there — no libssl.so.1.1). No Prisma downgrade, no compat libraries.
+  binaryTargets = ["native", "linux-musl", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum PropertyType {
+  domain
+  url_prefix
+}
+
+enum PropertyStatus {
+  healthy
+  needs_attention
+  stale
+  disconnected
+}
+
+enum GscPermissionLevel {
+  siteOwner
+  siteFullUser
+  siteRestrictedUser
+  siteUnverifiedUser
+}
+
+enum ConnectionStatus {
+  connected
+  expired
+  revoked
+  needs_reauth
+  error
+}
+
+enum Freshness {
+  fresh
+  delayed
+  stale
+  unavailable
+}
+
+enum Quality {
+  complete
+  partial
+  missing
+  delayed
+  conflicting
+  unavailable
+}
+
+enum RecommendationStatus {
+  recommendation_available
+  no_signal
+  insufficient_data
+  stale_data
+  unavailable
+}
+
+enum SignalType {
+  ctr_below_expected
+  position_decline
+  content_relevance_gap
+}
+
+enum FixApplyStatus {
+  available
+  reviewed
+  applied
+  dismissed
+  acknowledged
+}
+
+enum OutcomeStatus {
+  positive_change
+  no_material_change
+  negative_change
+  insufficient_data
+  data_delayed
+  conflicting_data
+  unavailable
+}
+
+model User {
+  id           String                    @id @default(cuid())
+  email        String                    @unique
+  passwordHash String?
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
+  workspaces   WorkspaceMember[]
+  googleTokens SearchConsoleConnection[]
+}
+
+model Workspace {
+  id              String                    @id @default(cuid())
+  name            String
+  plan            String                    @default("solo")
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+  members         WorkspaceMember[]
+  properties      SearchProperty[]
+  connections     SearchConsoleConnection[]
+  recommendations Recommendation[]
+  fixes           Fix[]
+  snapshots       SearchDataSnapshot[]
+  jobs            IngestionJob[]
+}
+
+model WorkspaceMember {
+  userId      String
+  workspaceId String
+  role        String    @default("owner")
+  createdAt   DateTime  @default(now())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@id([userId, workspaceId])
+  @@index([workspaceId])
+}
+
+model SearchConsoleConnection {
+  id                    String           @id @default(cuid())
+  workspaceId           String
+  userId                String
+  googleAccountEmail    String?
+  encryptedAccessToken  String
+  encryptedRefreshToken String
+  accessTokenExpiresAt  DateTime
+  refreshTokenExpiresAt DateTime?
+  scopes                String[]
+  status                ConnectionStatus @default(connected)
+  keyVersion            Int              @default(1)
+  lastRefreshedAt       DateTime         @default(now())
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+  workspace             Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user                  User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId])
+  @@index([userId])
+}
+
+model SearchProperty {
+  id              String             @id @default(cuid())
+  workspaceId     String
+  siteUrl         String
+  displayName     String
+  type            PropertyType
+  permissionLevel GscPermissionLevel?
+  status          PropertyStatus     @default(healthy)
+  isSelectable    Boolean            @default(true)
+  siteOrigin      String
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  workspace       Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  snapshots       SearchDataSnapshot[]
+  recommendations Recommendation[]
+  fixes           Fix[]
+
+  @@unique([workspaceId, siteUrl])
+  @@index([workspaceId])
+}
+
+model SearchDataSnapshot {
+  id              String   @id @default(cuid())
+  workspaceId     String
+  propertyId      String
+  siteUrl         String
+  periodStart     DateTime
+  periodEnd       DateTime
+  periodLabel     String
+  dataThrough     DateTime
+  retrievedAt     DateTime @default(now())
+  freshness       Freshness
+  quality         Quality
+  limitations     String[]
+  normalizedJson  Json
+  rawResponseHash String
+  rowCount        Int
+  createdAt       DateTime @default(now())
+  workspace       Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  property        SearchProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@unique([propertyId, periodStart, periodEnd, rawResponseHash])
+  @@index([workspaceId, propertyId, periodEnd])
+}
+
+model Recommendation {
+  id                String               @id @default(cuid())
+  workspaceId       String
+  propertyId        String
+  snapshotId        String?
+  signal            SignalType
+  page              String
+  pageUrl           String
+  finding           String
+  interpretation    String
+  recommendedAction String
+  rationale         String
+  evidenceJson      Json
+  snapshotJson      Json
+  limitations       String[]
+  status            RecommendationStatus @default(recommendation_available)
+  createdAt         DateTime             @default(now())
+  workspace         Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  property          SearchProperty       @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, propertyId, createdAt])
+}
+
+model Fix {
+  id                      String         @id @default(cuid())
+  workspaceId             String
+  propertyId              String
+  recommendationId        String?
+  page                    String
+  status                  FixApplyStatus @default(available)
+  dismissReason           String?
+  baselineClicks          Int?
+  baselineCtr             String?
+  baselinePosition        Float?
+  baselineCapturedAt      DateTime?
+  appliedAt               DateTime?
+  expectedMeasurementDate DateTime?
+  measurementWindowDays   Int            @default(14)
+  createdAt               DateTime       @default(now())
+  updatedAt               DateTime       @updatedAt
+  workspace               Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  property                SearchProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  outcome                 FixOutcome?
+
+  @@index([workspaceId, propertyId, status])
+}
+
+model FixOutcome {
+  id         String        @id @default(cuid())
+  fixId      String        @unique
+  status     OutcomeStatus
+  beforeJson Json
+  afterJson  Json?
+  measuredAt DateTime?     @default(now())
+  createdAt  DateTime      @default(now())
+  fix        Fix           @relation(fields: [fixId], references: [id], onDelete: Cascade)
+}
+
+model IngestionJob {
+  id          String   @id @default(cuid())
+  workspaceId String
+  propertyId  String
+  siteUrl     String
+  periodStart DateTime
+  periodEnd   DateTime
+  status      String   @default("queued")
+  attempts    Int      @default(0)
+  lastError   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, propertyId, status])
+  @@index([status, createdAt])
+}

@@ -13,12 +13,26 @@ export function CreateWorkspaceForm() {
   const router = useRouter();
   const [name, setName] = useState(session.onboarding.workspaceName ?? "");
   const [error, setError] = useState<string | undefined>();
+  const [busy, setBusy] = useState(false);
 
-  function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) {
       setError("Give your workspace a name to continue.");
+      return;
+    }
+    if (session.providerMode === "real") {
+      // Real mode: the workspace is created server-side and becomes the
+      // active workspace context (stale state cleared inside).
+      setBusy(true);
+      const result = await session.createWorkspaceReal(trimmed);
+      setBusy(false);
+      if (!result.ok) {
+        setError(result.message ?? "We couldn't create your workspace. Try again.");
+        return;
+      }
+      router.push(resumeRoute({ ...session.onboarding, workspaceName: result.workspaceName ?? trimmed }));
       return;
     }
     session.setWorkspaceName(trimmed);
@@ -43,8 +57,8 @@ export function CreateWorkspaceForm() {
               error={error}
               required
             />
-            <Button variant="primary" type="submit" className="w-full">
-              Continue
+            <Button variant="primary" type="submit" className="w-full" disabled={busy}>
+              {busy ? "Creating…" : "Continue"}
             </Button>
           </form>
         </div>

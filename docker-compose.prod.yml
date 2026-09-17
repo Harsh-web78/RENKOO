@@ -1,0 +1,29 @@
+# docker-compose.prod.yml — production override for the first deployment.
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Every value below is REQUIRED from the operator environment (shell exports
+# or a production `.env` project file). There are deliberately NO dev
+# defaults here: an unset variable resolves to an empty string and the API
+# fail-fast checks (dev SESSION_SECRET, missing GOOGLE_TOKEN_ENCRYPTION_KEY,
+# required DATABASE_URL/REDIS_URL validation) refuse to boot rather than run
+# misconfigured. See docs/production-checklist.md for the full variable table.
+#
+# The base file's `db`/`redis` services are reused for self-hosted deploys.
+# For managed Postgres/Redis, point DATABASE_URL/REDIS_URL at them instead
+# (TLS: postgresql://...?sslmode=require, rediss://...).
+
+services:
+  api:
+    environment:
+      NODE_ENV: production
+      PORT: "${PORT:-3000}"
+      DATABASE_URL: "${DATABASE_URL:?DATABASE_URL is required (e.g. postgresql://user:pass@host:5432/renko)}"
+      REDIS_URL: "${REDIS_URL:?REDIS_URL is required (e.g. redis://host:6379 or rediss://...)}"
+      FRONTEND_URL: "${FRONTEND_URL:?FRONTEND_URL is required (e.g. https://www.renko.app)}"
+      SESSION_SECRET: "${SESSION_SECRET:?SESSION_SECRET is required (strong random, >=32 chars)}"
+      GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID:?GOOGLE_CLIENT_ID is required}"
+      GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET:?GOOGLE_CLIENT_SECRET is required}"
+      GOOGLE_REDIRECT_URI: "${GOOGLE_REDIRECT_URI:?GOOGLE_REDIRECT_URI is required (must exactly match the Console whitelisting)}"
+      GOOGLE_TOKEN_ENCRYPTION_KEY: "${GOOGLE_TOKEN_ENCRYPTION_KEY:?GOOGLE_TOKEN_ENCRYPTION_KEY is required (base64 of 32 random bytes)}"
+      GSC_MOCK: "false"
