@@ -57,7 +57,7 @@ RENKO's product promise is narrow by design: **one recommendation at a time, wit
 
 - **Framework:** Next.js 15 App Router (`app/` route groups: `(marketing)`, `(auth)`, `(product)`, `onboarding`), React 19, Tailwind 3, TypeScript 5.6, ESLint `next/core-web-vitals`.
 - **No backend:** All state is client-side via `lib/mock/session-context.tsx` persisted to `localStorage` key `renko-mock-session-v1`. `AppProviders` wraps `SessionProvider` in `app/layout.tsx:39-45`.
-- **Pricing/config:** `lib/pricing-config.ts` (display prices per currency, no live billing) and `lib/site-config.ts` (`https://www.renko.app`).
+- **Pricing/config:** `lib/pricing-config.ts` (display prices per currency, no live billing) and `lib/site-config.ts` (`https://www.renkoo.online`).
 
 ### 2.2 Route inventory
 

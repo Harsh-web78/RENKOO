@@ -84,6 +84,29 @@ export class GoogleOAuthController {
     (req.session as unknown as Record<string, unknown>).oauthStateExpiresAt = Date.now() + 600_000;
     (req.session as unknown as Record<string, unknown>).oauthWorkspaceId = targetWorkspaceId;
 
+    // Production-hardening: persist the session BEFORE redirecting to
+    // Google. express-session otherwise saves implicitly at end-of-response;
+    // with a Redis store that write can fail (or lose a startup/connect race)
+    // after the 302 is already out, and the callback then finds an empty
+    // session → 403 "Missing OAuth state.". Fail closed here instead of
+    // sending the user to Google with doomed state.
+    try {
+      const save = req.session?.save;
+      if (typeof save !== "function") throw new Error("SESSION_UNAVAILABLE");
+      await new Promise<void>((resolve, reject) => {
+        save.call(req.session, (err: unknown) => {
+          if (err) reject(err instanceof Error ? err : new Error(String(err)));
+          else resolve();
+        });
+      });
+    } catch {
+      res.status(503).json({
+        code: "OAUTH_SESSION_UNAVAILABLE",
+        message: "Could not start the Google connection. Please try again.",
+      });
+      return;
+    }
+
     // httpOnly cookie per architecture §5.5
     res.cookie("oauth_state", state, {
       httpOnly: true,

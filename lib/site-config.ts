@@ -3,9 +3,9 @@ export const siteConfig = {
   tagline: "Find the one SEO change worth making next.",
   description:
     "RENKO connects to Google Search Console and surfaces the single highest-value SEO change worth making next — with the evidence behind it.",
-  // Placeholder production URL. Update before deploying and before generating
-  // the real sitemap/robots output.
-  url: "https://www.renko.app",
+  // Production URL (sitemap, robots, metadata). Must match the deployed
+  // frontend origin.
+  url: "https://www.renkoo.online",
 } as const;
 
 export const primaryNav = [
