@@ -108,12 +108,13 @@ export class SearchConsoleService {
       where: { workspaceId },
       orderBy: { displayName: "asc" },
     });
-    // Map to frontend SearchProperty shape (id, name, type)
+    // Map to frontend SearchProperty shape (id, name, type). The canonical
+    // GSC identifier (`siteUrl`) stays server-side — the frontend only ever
+    // handles opaque property ids (same boundary rule as history snapshots).
     return props.map((p) => ({
       id: p.id,
       name: p.displayName,
       type: p.type === "url_prefix" ? "url-prefix" : "domain",
-      siteUrl: p.siteUrl,
       status: p.status,
       isSelectable: p.isSelectable,
       permissionLevel: p.permissionLevel,

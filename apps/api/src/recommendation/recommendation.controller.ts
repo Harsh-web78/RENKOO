@@ -1,15 +1,19 @@
-import { Body, Controller, Get, Param, Post, UseGuards, HttpException, HttpStatus } from "@nestjs/common";
+import { Body, Controller, Get, Logger, Param, Post, UseGuards, HttpException, HttpStatus } from "@nestjs/common";
 import { SessionAuthGuard } from "../common/guards/session-auth.guard";
 import { WorkspaceAuthGuard } from "../workspaces/guards/workspace.guard";
 import { CsrfGuard } from "../common/guards/csrf.guard";
 import { RecommendationService } from "./recommendation.service";
+import { MeasurementQueue } from "./measurement.queue";
 import { PrismaService } from "../prisma/prisma.service";
 
 @Controller("workspaces/:workspaceId/properties/:propertyId")
 export class RecommendationController {
+  private readonly logger = new Logger(RecommendationController.name);
+
   constructor(
     private readonly recService: RecommendationService,
     private readonly prisma: PrismaService,
+    private readonly measurements: MeasurementQueue,
   ) {}
 
   private async ensureProperty(workspaceId: string, propertyId: string) {
@@ -65,6 +69,18 @@ export class RecommendationController {
   ) {
     await this.ensureProperty(workspaceId, propertyId);
     const fix = await this.recService.applyFix({ workspaceId, propertyId, fixId });
+    // Prompt 4: schedule automatic measurement for the stored window end.
+    // Best-effort — an enqueue failure must never fail the apply itself
+    // (manual checkFix and the bootstrap sweep remain as backstops).
+    try {
+      const expected = fix.expectedMeasurementDate ? new Date(fix.expectedMeasurementDate).getTime() : NaN;
+      const delayMs = Number.isFinite(expected) ? Math.max(0, expected - Date.now()) : 0;
+      await this.measurements.scheduleMeasurement(fix.id, delayMs, {
+        expectedMeasurementDate: fix.expectedMeasurementDate ? new Date(fix.expectedMeasurementDate) : undefined,
+      });
+    } catch (e) {
+      this.logger.warn(`measure schedule failed fixId=${fix.id}: ${e instanceof Error ? e.message : String(e)}`);
+    }
     return { fix };
   }
 

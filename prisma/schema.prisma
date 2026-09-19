@@ -81,6 +81,13 @@ enum FixApplyStatus {
   applied
   dismissed
   acknowledged
+  // Prompt 2 (Remember): a previous available/reviewed incarnation replaced
+  // by a genuinely new one for the same property/page/signal. Terminal,
+  // system-written, never user-facing as current: getFix/history whitelist
+  // only available/reviewed/applied (+ dismissed/measured/acknowledged for
+  // history), so this value is invisible by default and needs no contract
+  // change. It is truthful (not a dismissal, not an apply).
+  superseded
 }
 
 enum OutcomeStatus {
@@ -235,6 +242,15 @@ model Fix {
   appliedAt               DateTime?
   expectedMeasurementDate DateTime?
   measurementWindowDays   Int            @default(14)
+  dismissedAt             DateTime?
+  acknowledgedAt          DateTime?
+  signalFingerprint       String?
+  // Prompt 3 (Measure): exact SearchDataSnapshot row the apply-time baseline
+  // was captured from. Nullable for pre-Prompt-3 rows (checked code treats
+  // null as legacy → falls back to createdAt ordering, never self-compares).
+  // Plain id, no relation (mirrors recommendationId): snapshots are never
+  // cascade-constrained by fixes.
+  baselineSnapshotId      String?
   createdAt               DateTime       @default(now())
   updatedAt               DateTime       @updatedAt
   workspace               Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -242,6 +258,9 @@ model Fix {
   outcome                 FixOutcome?
 
   @@index([workspaceId, propertyId, status])
+  @@index([workspaceId, propertyId, status, createdAt])
+  @@index([propertyId, status])
+  @@index([workspaceId, createdAt])
 }
 
 model FixOutcome {

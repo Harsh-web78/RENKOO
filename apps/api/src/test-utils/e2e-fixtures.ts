@@ -163,9 +163,45 @@ export async function createPropertyRow(
 export async function seedSignalSnapshot(
   prisma: PrismaService,
   params: { workspaceId: string; propertyId: string; siteUrl: string; displayName?: string },
+  // Prompt 2: optional materially-different evidence for "genuinely new
+  // evidence" fixtures. Defaults reproduce the canonical divergent snapshot;
+  // overrides must still trigger ctr-below-expected on /pricing (decline
+  // ≥0.005 absolute and ≥15% relative, top-query CTR above the 2% gap
+  // threshold so no competing signal fires).
+  metrics?: {
+    clicks?: number;
+    impressions?: number;
+    ctr?: number;
+    position?: number;
+    priorClicks?: number;
+    priorImpressions?: number;
+    priorCtr?: number;
+    priorPosition?: number;
+    queries?: Array<{ query: string; clicks: number; impressions: number; ctr: number; position: number }>;
+    periodLabel?: string;
+  },
 ): Promise<{ id: string }> {
   const now = new Date();
   const periodStart = new Date(now.getTime() - 28 * 24 * 60 * 60 * 1000);
+  const page = {
+    page: "/pricing",
+    clicks: metrics?.clicks ?? 60,
+    impressions: metrics?.impressions ?? 3000,
+    ctr: metrics?.ctr ?? 0.02,
+    position: metrics?.position ?? 4.5,
+  };
+  const comparisonPage = {
+    page: "/pricing",
+    clicks: metrics?.priorClicks ?? 90,
+    impressions: metrics?.priorImpressions ?? 2900,
+    ctr: metrics?.priorCtr ?? 0.031,
+    position: metrics?.priorPosition ?? 4.3,
+  };
+  const queries = metrics?.queries ?? [
+    { query: "pricing plans", clicks: 31, impressions: 1180, ctr: 0.026, position: 4.1 },
+    { query: "renko pricing", clicks: 18, impressions: 640, ctr: 0.028, position: 3.9 },
+  ];
+  const periodLabel = metrics?.periodLabel ?? "Last 28 days vs. prior 28 days";
   const normalizedJson = {
     meta: {
       source: { id: "google-search-console", label: "Google Search Console" },
@@ -175,19 +211,22 @@ export async function seedSignalSnapshot(
         type: "domain",
         siteUrl: params.siteUrl,
       },
-      period: { start: periodStart.toISOString(), end: now.toISOString(), label: "Last 28 days vs. prior 28 days" },
+      period: { start: periodStart.toISOString(), end: now.toISOString(), label: periodLabel },
       dataThrough: now.toISOString(),
       retrievedAt: now.toISOString(),
       freshness: "fresh",
       quality: "complete",
       limitations: ["Page/query grouping may omit low-volume data for performance."],
     },
-    page: { page: "/pricing", clicks: 60, impressions: 3000, ctr: 0.02, position: 4.5 },
-    comparisonPage: { page: "/pricing", clicks: 90, impressions: 2900, ctr: 0.031, position: 4.3 },
-    queries: [
-      { query: "pricing plans", clicks: 31, impressions: 1180, ctr: 0.026, position: 4.1 },
-      { query: "renko pricing", clicks: 18, impressions: 640, ctr: 0.028, position: 3.9 },
-    ],
+    page: { page: page.page, clicks: page.clicks, impressions: page.impressions, ctr: page.ctr, position: page.position },
+    comparisonPage: {
+      page: comparisonPage.page,
+      clicks: comparisonPage.clicks,
+      impressions: comparisonPage.impressions,
+      ctr: comparisonPage.ctr,
+      position: comparisonPage.position,
+    },
+    queries: queries.map((q) => ({ query: q.query, clicks: q.clicks, impressions: q.impressions, ctr: q.ctr, position: q.position })),
   };
   const row = await prisma.searchDataSnapshot.create({
     data: {
@@ -196,7 +235,7 @@ export async function seedSignalSnapshot(
       siteUrl: params.siteUrl,
       periodStart,
       periodEnd: now,
-      periodLabel: "Last 28 days vs. prior 28 days",
+      periodLabel,
       dataThrough: now,
       retrievedAt: now,
       freshness: "fresh",

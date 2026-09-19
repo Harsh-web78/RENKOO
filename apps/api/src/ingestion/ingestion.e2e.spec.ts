@@ -26,7 +26,7 @@ describe("Ingestion + Snapshot (Prompt 10)", () => {
       .send({})
       .expect(201);
     const list = await agent.get(`/api/v1/workspaces/${workspaceId}/properties`).expect(200);
-    const prop = list.body.properties.find((p: any) => p.siteUrl === "sc-domain:example.com");
+    const prop = list.body.properties.find((p: any) => p.name === "example.com");
     const ingest = await agent
       .post(`/api/v1/workspaces/${workspaceId}/properties/${prop.id}/ingest`)
       .set("x-csrf-token", await csrfToken(agent))

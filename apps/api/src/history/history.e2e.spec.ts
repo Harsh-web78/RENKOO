@@ -26,7 +26,7 @@ describe("History API (workspace-scoped, no separate table)", () => {
       .send({})
       .expect(201);
     const list = await agent.get(`/api/v1/workspaces/${workspaceId}/properties`).expect(200);
-    const prop = list.body.properties.find((p: any) => p.siteUrl === "sc-domain:example.com");
+    const prop = list.body.properties.find((p: any) => p.name === "example.com");
     await agent
       .post(`/api/v1/workspaces/${workspaceId}/properties/${prop.id}/ingest`)
       .set("x-csrf-token", await csrfToken(agent))
@@ -34,7 +34,7 @@ describe("History API (workspace-scoped, no separate table)", () => {
       .expect(201);
     // Test-only divergent fixture (see e2e-fixtures.seedSignalSnapshot):
     // mock ingest alone yields identical current/prior → no-signal.
-    await seedSignalSnapshot(testApp.prisma, { workspaceId, propertyId: prop.id, siteUrl: prop.siteUrl });
+    await seedSignalSnapshot(testApp.prisma, { workspaceId, propertyId: prop.id, siteUrl: "sc-domain:example.com" });
     await agent.get(`/api/v1/workspaces/${workspaceId}/properties/${prop.id}/recommendation`).expect(200);
     const fixRes1 = await agent.get(`/api/v1/workspaces/${workspaceId}/properties/${prop.id}/fix`).expect(200);
     const fix1 = fixRes1.body.fix.id as string;
@@ -43,7 +43,24 @@ describe("History API (workspace-scoped, no separate table)", () => {
       .set("x-csrf-token", await csrfToken(agent))
       .send({ reason: "other" })
       .expect(201);
-    // A fresh recommendation after dismissal creates the second fix.
+    // A fresh recommendation after dismissal creates the second fix —
+    // under Prompt 2 Remember rules this requires genuinely new evidence
+    // (same evidence would be remembered, not recreated).
+    await seedSignalSnapshot(testApp.prisma, { workspaceId, propertyId: prop.id, siteUrl: "sc-domain:example.com" }, {
+      clicks: 84,
+      impressions: 3400,
+      ctr: 0.0247,
+      position: 4.7,
+      priorClicks: 110,
+      priorImpressions: 3300,
+      priorCtr: 0.0333,
+      priorPosition: 4.4,
+      queries: [
+        { query: "pricing plans", clicks: 38, impressions: 1250, ctr: 0.03, position: 4.3 },
+        { query: "team pricing", clicks: 16, impressions: 720, ctr: 0.022, position: 4.9 },
+      ],
+      periodLabel: "Fresh window vs. prior",
+    });
     await agent.get(`/api/v1/workspaces/${workspaceId}/properties/${prop.id}/recommendation`).expect(200);
     const fixRes2 = await agent.get(`/api/v1/workspaces/${workspaceId}/properties/${prop.id}/fix`).expect(200);
     const fix2 = fixRes2.body.fix.id as string;
@@ -59,7 +76,7 @@ describe("History API (workspace-scoped, no separate table)", () => {
       data: {
         workspaceId,
         propertyId: prop.id,
-        siteUrl: prop.siteUrl,
+        siteUrl: "sc-domain:example.com",
         periodStart: new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000),
         periodEnd: now,
         periodLabel: "Last 14 days",
@@ -71,7 +88,7 @@ describe("History API (workspace-scoped, no separate table)", () => {
         normalizedJson: {
           meta: {
             source: { id: "google-search-console", label: "Google Search Console" },
-            property: { id: prop.id, name: "example.com", type: "domain", siteUrl: prop.siteUrl },
+            property: { id: prop.id, name: "example.com", type: "domain", siteUrl: "sc-domain:example.com" },
             period: { start: new Date(now.getTime() - 14 * 86400000).toISOString(), end: now.toISOString(), label: "Last 14 days" },
             dataThrough: now.toISOString(),
             retrievedAt: now.toISOString(),
@@ -96,7 +113,7 @@ describe("History API (workspace-scoped, no separate table)", () => {
     // Deterministic timestamps for ordering assertions.
     await testApp.prisma.fix.update({ where: { id: fix1 }, data: { createdAt: new Date("2026-08-01T00:00:00.000Z") } });
     await testApp.prisma.fix.update({ where: { id: fix2 }, data: { createdAt: new Date("2026-08-02T00:00:00.000Z") } });
-    shared = { agent, workspaceId, propertyId: prop.id as string, siteUrl: prop.siteUrl as string, fix1, fix2 };
+    shared = { agent, workspaceId, propertyId: prop.id as string, siteUrl: "sc-domain:example.com", fix1, fix2 };
   });
 
   afterAll(async () => {

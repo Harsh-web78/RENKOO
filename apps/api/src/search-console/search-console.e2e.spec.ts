@@ -59,27 +59,28 @@ describe("Search Console sites.list (Prompt 9)", () => {
     // Synced once in beforeAll; assert the stored rows through HTTP.
     const list = await agent.get(`/api/v1/workspaces/${workspaceId}/properties`).expect(200);
     expect(list.body.properties).toHaveLength(5);
-    const domain = list.body.properties.find((p: { siteUrl: string }) => p.siteUrl === "sc-domain:example.com");
+    // The canonical GSC identifier (`siteUrl`) stays server-side (Prompt 1
+    // hygiene); parsing is verified through the public `name` + `type`.
+    const domain = list.body.properties.find((p: { name: string }) => p.name === "example.com");
     expect(domain).toBeDefined();
     expect(domain.type).toBe("domain");
     expect(domain.name).toBe("example.com");
-    expect(domain.siteUrl).toBe("sc-domain:example.com");
+    expect(domain.siteUrl).toBeUndefined();
 
-    const urlPrefix = list.body.properties.find((p: { siteUrl: string }) => p.siteUrl === "https://www.example.com/");
+    const urlPrefix = list.body.properties.find((p: { name: string }) => p.name === "https://www.example.com/");
     expect(urlPrefix).toBeDefined();
     expect(urlPrefix.type).toBe("url-prefix");
-    expect(urlPrefix.siteUrl).toBe("https://www.example.com/");
   });
 
   it("selectable gating: siteOwner/siteFullUser true, siteUnverifiedUser false", async () => {
     const { agent, workspaceId } = shared;
     const list = await agent.get(`/api/v1/workspaces/${workspaceId}/properties`).expect(200);
-    const owner = list.body.properties.find((p: { siteUrl: string }) => p.siteUrl === "sc-domain:example.com");
+    const owner = list.body.properties.find((p: { name: string }) => p.name === "example.com");
     expect(owner.isSelectable).toBe(true);
     expect(owner.permissionLevel).toBe("siteOwner");
-    const fullUser = list.body.properties.find((p: { siteUrl: string }) => p.siteUrl === "https://www.example.com/");
+    const fullUser = list.body.properties.find((p: { name: string }) => p.name === "https://www.example.com/");
     expect(fullUser.isSelectable).toBe(true);
-    const unverified = list.body.properties.find((p: { siteUrl: string }) => p.siteUrl === "sc-domain:oldproject.com");
+    const unverified = list.body.properties.find((p: { name: string }) => p.name === "oldproject.com");
     expect(unverified.isSelectable).toBe(false);
     expect(unverified.permissionLevel).toBe("siteUnverifiedUser");
   });

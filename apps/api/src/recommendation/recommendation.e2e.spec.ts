@@ -28,7 +28,7 @@ describe("Recommendation Engine Integration (Prompt 11)", () => {
       .send({})
       .expect(201);
     const list = await agent.get(`/api/v1/workspaces/${workspaceId}/properties`).expect(200);
-    const prop = list.body.properties.find((p: any) => p.siteUrl === "sc-domain:example.com");
+    const prop = list.body.properties.find((p: any) => p.name === "example.com");
     await agent
       .post(`/api/v1/workspaces/${workspaceId}/properties/${prop.id}/ingest`)
       .set("x-csrf-token", await csrfToken(agent))
@@ -38,7 +38,7 @@ describe("Recommendation Engine Integration (Prompt 11)", () => {
     // rows (real engine → no-signal). Seed a real normalized snapshot with a
     // deterministic CTR decline; the recommendation endpoint is still hit
     // through HTTP below.
-    await seedSignalSnapshot(testApp.prisma, { workspaceId, propertyId: prop.id, siteUrl: prop.siteUrl });
+    await seedSignalSnapshot(testApp.prisma, { workspaceId, propertyId: prop.id, siteUrl: "sc-domain:example.com" });
     await agent.get(`/api/v1/workspaces/${workspaceId}/properties/${prop.id}/recommendation`).expect(200);
     const fix = await agent.get(`/api/v1/workspaces/${workspaceId}/properties/${prop.id}/fix`).expect(200);
     shared = { agent, workspaceId, propertyId: prop.id as string, fixId: fix.body.fix.id as string };
@@ -153,7 +153,24 @@ describe("Recommendation Engine Integration (Prompt 11)", () => {
 
   it("27-28. no confidence/SEO score in recommendation", async () => {
     const { agent, workspaceId, propertyId } = shared;
-    // fixId is dismissed, so the persisting signal surfaces a fresh recommendation.
+    // fixId is dismissed: the same persisting signal is now remembered
+    // (Prompt 2), so surface genuinely new evidence first — the language
+    // assertions below keep their original intent on the new incarnation.
+    await seedSignalSnapshot(testApp.prisma, { workspaceId, propertyId, siteUrl: "sc-domain:example.com" }, {
+      clicks: 84,
+      impressions: 3400,
+      ctr: 0.0247,
+      position: 4.7,
+      priorClicks: 110,
+      priorImpressions: 3300,
+      priorCtr: 0.0333,
+      priorPosition: 4.4,
+      queries: [
+        { query: "pricing plans", clicks: 38, impressions: 1250, ctr: 0.03, position: 4.3 },
+        { query: "team pricing", clicks: 16, impressions: 720, ctr: 0.022, position: 4.9 },
+      ],
+      periodLabel: "Fresh window vs. prior",
+    });
     const rec = await agent.get(`/api/v1/workspaces/${workspaceId}/properties/${propertyId}/recommendation`).expect(200);
     expect(rec.body.status).toBe("recommendation-available");
     const str = JSON.stringify(rec.body);

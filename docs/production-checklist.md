@@ -24,8 +24,22 @@ ENVIRONMENT (unverifiable on this machine).
 
 | Variable | Status | Notes |
 |---|---|---|
-| `NEXT_PUBLIC_API_BASE` | REQUIRES CONFIGURATION | e.g. `https://api.renko.app/api/v1`. Default `http://localhost:3000/api/v1`. |
+| `NEXT_PUBLIC_API_BASE` | REQUIRES CONFIGURATION | Must be `https://api.renkoo.online/api/v1` for this deployment. Default `http://localhost:3000/api/v1` (dev only). |
 | `NEXT_PUBLIC_USE_REAL_PROVIDER` | REQUIRES CONFIGURATION | Must be `true` in production; default (unset/false) serves mock data. |
+
+### Frontend production build
+
+Build production ONLY via `npm run build:prod`, which runs
+`scripts/validate-prod-env.mjs --production` first and fails closed:
+
+`NEXT_PUBLIC_API_BASE=https://api.renkoo.online/api/v1`
+
+`NEXT_PUBLIC_USE_REAL_PROVIDER=true`
+
+The build fails if these requirements are not satisfied (missing provider
+flag, non-`true` provider value, or a non-HTTPS / loopback / empty API base).
+Plain `npm run build` stays dev-safe (mock + localhost allowed). The
+validator inspects only these two public variables — never secrets.
 
 ## Database
 
@@ -56,6 +70,15 @@ ENVIRONMENT (unverifiable on this machine).
 - Host-tooling note: a native PostgreSQL on this machine binds
   `0.0.0.0:5432`, so host-side Prisma/Jest must use the `5433:5432` alias
   (`DATABASE_URL=postgresql://renko:renko@127.0.0.1:5433/renko`).
+- Queue durability (Prompt 5): the self-hosted `redis` service runs with AOF
+  (`--appendonly yes` on the existing `redisdata` volume) so delayed BullMQ
+  measurement jobs survive Redis restarts. For managed Redis, enable
+  persistence/AOF there instead. Application code cannot guarantee Redis
+  durability — the recovery guarantee is the bootstrap sweep: the database
+  stays authoritative (`applied` + outcome-less + window elapsed ⇒ job is
+  re-derived). Readiness (`/health/ready`) additionally reports
+  `measurementQueue` provider state and the last sweep summary (zero-I/O,
+  log-based observability otherwise).
 
 ## Google OAuth setup requirements
 

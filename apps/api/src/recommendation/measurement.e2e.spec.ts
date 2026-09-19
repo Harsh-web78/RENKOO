@@ -27,7 +27,7 @@ describe("Measurement /check (Prompt 12)", () => {
       .send({})
       .expect(201);
     const list = await agent.get(`/api/v1/workspaces/${workspaceId}/properties`).expect(200);
-    const prop = list.body.properties.find((p: any) => p.siteUrl === "sc-domain:example.com");
+    const prop = list.body.properties.find((p: any) => p.name === "example.com");
     await agent
       .post(`/api/v1/workspaces/${workspaceId}/properties/${prop.id}/ingest`)
       .set("x-csrf-token", await csrfToken(agent))
@@ -35,7 +35,7 @@ describe("Measurement /check (Prompt 12)", () => {
       .expect(201);
     // Test-only divergent fixture (see e2e-fixtures.seedSignalSnapshot):
     // mock ingest alone yields identical current/prior → no-signal.
-    await seedSignalSnapshot(testApp.prisma, { workspaceId, propertyId: prop.id, siteUrl: prop.siteUrl });
+    await seedSignalSnapshot(testApp.prisma, { workspaceId, propertyId: prop.id, siteUrl: "sc-domain:example.com" });
     await agent.get(`/api/v1/workspaces/${workspaceId}/properties/${prop.id}/recommendation`).expect(200);
     const fixRes = await agent.get(`/api/v1/workspaces/${workspaceId}/properties/${prop.id}/fix`).expect(200);
     const fixId = fixRes.body.fix.id as string;
@@ -51,7 +51,7 @@ describe("Measurement /check (Prompt 12)", () => {
       data: {
         workspaceId,
         propertyId: prop.id,
-        siteUrl: prop.siteUrl,
+        siteUrl: "sc-domain:example.com",
         periodStart: new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000),
         periodEnd: now,
         periodLabel: "Last 14 days",
@@ -63,7 +63,7 @@ describe("Measurement /check (Prompt 12)", () => {
         normalizedJson: {
           meta: {
             source: { id: "google-search-console", label: "Google Search Console" },
-            property: { id: prop.id, name: prop.displayName, type: "domain", siteUrl: prop.siteUrl },
+            property: { id: prop.id, name: prop.displayName, type: "domain", siteUrl: "sc-domain:example.com" },
             period: { start: new Date(now.getTime() - 14 * 86400000).toISOString(), end: now.toISOString(), label: "Last 14 days" },
             dataThrough: now.toISOString(),
             retrievedAt: now.toISOString(),

@@ -61,6 +61,13 @@ services:
 
   redis:
     image: redis:7-alpine
+    # Prompt 5 (queue durability): AOF persistence so delayed BullMQ
+    # measurement jobs survive Redis restarts (RDB snapshots alone can lose
+    # minutes of writes). Same image/volume — no new infrastructure.
+    # Anything lost anyway is reconstructed by the bootstrap sweep (the
+    # database is authoritative). Managed Redis: enable AOF/persistence
+    # there instead; this flag only affects the self-hosted service.
+    command: ["redis-server", "--appendonly", "yes"]
     ports:
       - "6379:6379"
     volumes:

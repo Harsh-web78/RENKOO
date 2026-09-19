@@ -86,7 +86,7 @@ describe("Acknowledged state + lifecycle rules (Prompt 14)", () => {
       .send({})
       .expect(201);
     const list = await agent.get(`/api/v1/workspaces/${workspaceId}/properties`).expect(200);
-    const prop = list.body.properties.find((p: any) => p.siteUrl === "sc-domain:example.com");
+    const prop = list.body.properties.find((p: any) => p.name === "example.com");
     await agent
       .post(`/api/v1/workspaces/${workspaceId}/properties/${prop.id}/ingest`)
       .set("x-csrf-token", await csrfToken(agent))
@@ -94,11 +94,11 @@ describe("Acknowledged state + lifecycle rules (Prompt 14)", () => {
       .expect(201);
     // Test-only divergent fixture (see e2e-fixtures.seedSignalSnapshot):
     // mock ingest alone yields identical current/prior → no-signal.
-    await seedSignalSnapshot(app1.prisma, { workspaceId, propertyId: prop.id, siteUrl: prop.siteUrl });
+    await seedSignalSnapshot(app1.prisma, { workspaceId, propertyId: prop.id, siteUrl: "sc-domain:example.com" });
     await agent.get(`/api/v1/workspaces/${workspaceId}/properties/${prop.id}/recommendation`).expect(200);
     const fixRes = await agent.get(`/api/v1/workspaces/${workspaceId}/properties/${prop.id}/fix`).expect(200);
     const fixId = fixRes.body.fix.id as string;
-    await measureShared(app1, agent, workspaceId, prop.id, prop.siteUrl, fixId);
+    await measureShared(app1, agent, workspaceId, prop.id, "sc-domain:example.com", fixId);
     shared = { agent, workspaceId, propertyId: prop.id as string, fixId };
   });
 
@@ -177,7 +177,7 @@ describe("Acknowledged state + lifecycle rules (Prompt 14)", () => {
     expect(row?.status).toBe("acknowledged");
   });
 
-  it("R2. dismiss → next recommendation creates exactly one new active fix; dismissed stays dismissed", async () => {
+  it("R2. dismissed evidence is remembered: same evidence → no new fix; new evidence → exactly one new active fix", async () => {
     // Isolated app: this rule needs its own sync/ingest budget.
     const app2 = await createTestApp();
     try {
@@ -188,14 +188,14 @@ describe("Acknowledged state + lifecycle rules (Prompt 14)", () => {
         .send({})
         .expect(201);
       const list = await agent.get(`/api/v1/workspaces/${workspaceId}/properties`).expect(200);
-      const prop = list.body.properties.find((p: any) => p.siteUrl === "sc-domain:example.com");
+      const prop = list.body.properties.find((p: any) => p.name === "example.com");
       await agent
         .post(`/api/v1/workspaces/${workspaceId}/properties/${prop.id}/ingest`)
         .set("x-csrf-token", await csrfToken(agent))
         .send({})
         .expect(201);
       // Test-only divergent fixture (see e2e-fixtures.seedSignalSnapshot).
-      await seedSignalSnapshot(app2.prisma, { workspaceId, propertyId: prop.id, siteUrl: prop.siteUrl });
+      await seedSignalSnapshot(app2.prisma, { workspaceId, propertyId: prop.id, siteUrl: "sc-domain:example.com" });
       await agent.get(`/api/v1/workspaces/${workspaceId}/properties/${prop.id}/recommendation`).expect(200);
       const fixRes = await agent.get(`/api/v1/workspaces/${workspaceId}/properties/${prop.id}/fix`).expect(200);
       const fix1 = fixRes.body.fix.id as string;
@@ -204,11 +204,48 @@ describe("Acknowledged state + lifecycle rules (Prompt 14)", () => {
         .set("x-csrf-token", await csrfToken(agent))
         .send({ reason: "other" })
         .expect(201);
+      // Same evidence after dismissal → remembered: no new Fix, honest
+      // no-signal, dismissed row untouched (Prompt 2 supersedes the old R2
+      // "dismiss always creates a new fix" behavior).
+      const remembered = await agent.get(`/api/v1/workspaces/${workspaceId}/properties/${prop.id}/recommendation`).expect(200);
+      expect(remembered.body.status).toBe("no-signal");
+      expect(remembered.body.recommendation).toBeUndefined();
+      const fixResSuppressed = await agent.get(`/api/v1/workspaces/${workspaceId}/properties/${prop.id}/fix`).expect(200);
+      expect(fixResSuppressed.body.fix).toBeNull();
+      const totalAfterSuppress = await app2.prisma.fix.count({ where: { workspaceId, propertyId: prop.id } });
+      expect(totalAfterSuppress).toBe(1);
+      const stillDismissed = await app2.prisma.fix.findUnique({ where: { id: fix1 } });
+      expect(stillDismissed?.status).toBe("dismissed");
+      expect(stillDismissed?.dismissedAt).toBeDefined();
+      // Genuinely new evidence (same page + signal, materially changed
+      // metrics) → exactly one new active fix; the dismissed row is untouched.
+      await seedSignalSnapshot(app2.prisma, { workspaceId, propertyId: prop.id, siteUrl: "sc-domain:example.com" }, {
+        clicks: 84,
+        impressions: 3400,
+        ctr: 0.0247,
+        position: 4.7,
+        priorClicks: 110,
+        priorImpressions: 3300,
+        priorCtr: 0.0333,
+        priorPosition: 4.4,
+        queries: [
+          { query: "pricing plans", clicks: 38, impressions: 1250, ctr: 0.03, position: 4.3 },
+          { query: "team pricing", clicks: 16, impressions: 720, ctr: 0.022, position: 4.9 },
+        ],
+        periodLabel: "Fresh window vs. prior",
+      });
       const rec = await agent.get(`/api/v1/workspaces/${workspaceId}/properties/${prop.id}/recommendation`).expect(200);
       expect(rec.body.status).toBe("recommendation-available");
       const fixRes2 = await agent.get(`/api/v1/workspaces/${workspaceId}/properties/${prop.id}/fix`).expect(200);
       const fix2 = fixRes2.body.fix.id as string;
       expect(fix2).not.toBe(fix1);
+      const newRow = await app2.prisma.fix.findUnique({ where: { id: fix2 } });
+      expect(newRow?.signalFingerprint).toBeDefined();
+      expect(newRow?.signalFingerprint).not.toBe(stillDismissed?.signalFingerprint);
+      // Repeated GET with the same new evidence reuses fix2 (no duplicate).
+      await agent.get(`/api/v1/workspaces/${workspaceId}/properties/${prop.id}/recommendation`).expect(200);
+      const fixRes2b = await agent.get(`/api/v1/workspaces/${workspaceId}/properties/${prop.id}/fix`).expect(200);
+      expect(fixRes2b.body.fix.id).toBe(fix2);
       // Exactly one active fix for the property; the dismissed row is untouched.
       const active = await app2.prisma.fix.count({
         where: { workspaceId, propertyId: prop.id, status: { in: ["available", "reviewed", "applied"] } },
@@ -230,7 +267,7 @@ describe("Acknowledged state + lifecycle rules (Prompt 14)", () => {
         data: {
           workspaceId,
           propertyId: prop.id,
-          siteUrl: prop.siteUrl,
+          siteUrl: "sc-domain:example.com",
           periodStart: new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000),
           periodEnd: now,
           periodLabel: "Last 14 days",
@@ -242,7 +279,7 @@ describe("Acknowledged state + lifecycle rules (Prompt 14)", () => {
           normalizedJson: {
             meta: {
               source: { id: "google-search-console", label: "Google Search Console" },
-              property: { id: prop.id, name: "example.com", type: "domain", siteUrl: prop.siteUrl },
+              property: { id: prop.id, name: "example.com", type: "domain", siteUrl: "sc-domain:example.com" },
               period: { start: new Date(now.getTime() - 14 * 86400000).toISOString(), end: now.toISOString(), label: "Last 14 days" },
               dataThrough: now.toISOString(),
               retrievedAt: now.toISOString(),
@@ -280,7 +317,7 @@ describe("Acknowledged state + lifecycle rules (Prompt 14)", () => {
         data: {
           workspaceId,
           propertyId: prop.id,
-          siteUrl: prop.siteUrl,
+          siteUrl: "sc-domain:example.com",
           periodStart,
           periodEnd: freshNow,
           periodLabel: "Fresh window",
@@ -292,7 +329,7 @@ describe("Acknowledged state + lifecycle rules (Prompt 14)", () => {
           normalizedJson: {
             meta: {
               source: { id: "google-search-console", label: "Google Search Console" },
-              property: { id: prop.id, name: "example.com", type: "domain", siteUrl: prop.siteUrl },
+              property: { id: prop.id, name: "example.com", type: "domain", siteUrl: "sc-domain:example.com" },
               period: { start: periodStart.toISOString(), end: freshNow.toISOString(), label: "Fresh window" },
               dataThrough: freshNow.toISOString(),
               retrievedAt: freshNow.toISOString(),

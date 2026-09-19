@@ -10,6 +10,10 @@ import { AppModule } from "./app.module";
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
+  // Prompt 6: graceful shutdown (SIGTERM/SIGINT → Nest lifecycle) so the
+  // hourly sweep trigger, BullMQ Worker, and Redis connections close cleanly
+  // instead of leaving orphaned timers or background loops.
+  app.enableShutdownHooks();
   const config = app.get(ConfigService);
 
   const nodeEnv = config.get<string>("NODE_ENV", "development");

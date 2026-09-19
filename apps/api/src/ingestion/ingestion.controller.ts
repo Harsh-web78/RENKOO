@@ -14,6 +14,32 @@ export class IngestionController {
     private readonly queue: IngestionQueue,
   ) {}
 
+  /**
+   * Strips the internal canonical GSC identifier (`siteUrl`) from snapshot
+   * provenance before it leaves the API. Mirrors the `sanitizeSnapshot`
+   * pattern in `history.service.ts`. Stored rows are never mutated.
+   */
+  private sanitizeSnapshot<T>(snapshot: T): T {
+    const s = snapshot as unknown as Record<string, unknown> | undefined;
+    if (!s || typeof s !== "object" || !("meta" in s)) return snapshot;
+    const meta = s.meta as Record<string, unknown> | undefined;
+    if (!meta || typeof meta !== "object") return snapshot;
+    const property = meta.property as Record<string, unknown> | undefined;
+    if (!property || typeof property !== "object" || !("siteUrl" in property)) return snapshot;
+    const { siteUrl: _dropped, ...restProperty } = property as Record<string, unknown> & { siteUrl?: unknown };
+    void _dropped;
+    return { ...s, meta: { ...meta, property: restProperty } } as unknown as T;
+  }
+
+  private sanitizeSnapshotRow(row: Record<string, unknown>): Record<string, unknown> {
+    const { siteUrl: _droppedRow, normalizedJson, ...rest } = row;
+    void _droppedRow;
+    if (normalizedJson && typeof normalizedJson === "object") {
+      return { ...rest, normalizedJson: this.sanitizeSnapshot(normalizedJson) };
+    }
+    return rest;
+  }
+
   private mapError(e: unknown): never {
     const err = e as { code?: string; message?: string };
     switch (err.code) {
@@ -49,7 +75,7 @@ export class IngestionController {
     // In production with Redis, the worker would handle it; here we do direct for determinism
     try {
       const snapshot = await this.ingestion.ingest({ workspaceId, propertyId, userId });
-      return { jobId: queued.jobId, snapshot, queued: queued.queued };
+      return { jobId: queued.jobId, snapshot: this.sanitizeSnapshotRow(snapshot as Record<string, unknown>), queued: queued.queued };
     } catch (e: unknown) {
       this.mapError(e);
     }
@@ -67,7 +93,7 @@ export class IngestionController {
         // No snapshot yet — return unavailable state per spec
         throw new HttpException({ code: "DATA_UNAVAILABLE", message: "No snapshot available yet. Run ingestion first." }, HttpStatus.NOT_FOUND);
       }
-      return { snapshot: snap.normalizedJson ?? snap };
+      return { snapshot: this.sanitizeSnapshot(snap.normalizedJson ?? snap) };
     } catch (e: unknown) {
       if (e && typeof e === "object" && "code" in (e as Record<string, unknown>)) {
         this.mapError(e);
