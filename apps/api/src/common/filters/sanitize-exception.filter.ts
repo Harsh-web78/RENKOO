@@ -30,8 +30,13 @@ export class SanitizeExceptionFilter implements ExceptionFilter {
       return;
     }
 
+    // Log path WITHOUT the query string: callback URLs carry the OAuth
+    // authorization `code` and `state` as query params, and the code is
+    // exchangeable for tokens — it must never land in server logs.
+    const rawUrl = typeof request?.url === "string" ? request.url : "?";
+    const safeUrl = rawUrl.split("?")[0] as string;
     this.logger.error(
-      `Unhandled ${request?.method ?? "?"} ${request?.url ?? "?"}: ${
+      `Unhandled ${request?.method ?? "?"} ${safeUrl}: ${
         exception instanceof Error ? `${exception.name}: ${exception.message}` : String(exception)
       }`,
     );

@@ -72,6 +72,14 @@ async function bootstrap(): Promise<void> {
         prefix: "sess:",
       });
     } catch (err) {
+      // A silent MemoryStore fallback in production would shard sessions
+      // per-process: /auth/google/start on one instance (or before a
+      // restart) followed by /callback on another finds an empty session →
+      // 403 "Missing OAuth state." with zero observability (readiness
+      // reports redis "unknown" by design). Fail fast instead.
+      if (isProd) {
+        throw new Error("SESSION_STORE_INIT_FAILED: Redis session store could not initialize in production");
+      }
       // eslint-disable-next-line no-console
       console.warn("[session] Redis initialization failed, falling back to MemoryStore:", err);
       sessionStore = new session.MemoryStore();

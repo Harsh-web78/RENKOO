@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Query, Req, Res, UseGuards, Body, HttpCode } from "@nestjs/common";
+import { Controller, Get, Post, Query, Req, Res, UseGuards, Body, HttpCode, Logger } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import { Request, Response } from "express";
 import * as crypto from "crypto";
@@ -9,6 +9,8 @@ import { PrismaService } from "../prisma/prisma.service";
 
 @Controller("auth/google")
 export class GoogleOAuthController {
+  private readonly logger = new Logger(GoogleOAuthController.name);
+
   constructor(
     private readonly google: GoogleOAuthService,
     private readonly prisma: PrismaService,
@@ -156,6 +158,15 @@ export class GoogleOAuthController {
 
     // Validate state: must match both session and cookie via constant-time, and not expired
     if (!sessionState || !cookieState || !state) {
+      // Production diagnosis aid (booleans only — no state values, session
+      // IDs, or emails): pinpoints whether the callback arrived without a
+      // session cookie, without persisted session state, or without the
+      // oauth_state cookie. Response contract is unchanged (403 FORBIDDEN).
+      const hasSessionCookie = typeof (req.cookies as Record<string, unknown> | undefined)?.["renko.sid"] === "string";
+      this.logger.warn(
+        `OAuth callback missing state: hasSessionCookie=${hasSessionCookie} ` +
+          `hasSessionState=${Boolean(sessionState)} hasCookieState=${Boolean(cookieState)}`,
+      );
       this.clearOAuthState(req, res);
       res.status(403).json({ code: "FORBIDDEN", message: "Missing OAuth state." });
       return;
