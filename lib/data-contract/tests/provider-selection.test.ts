@@ -20,12 +20,17 @@ test("16. feature flag unset/false selects the Mock provider (default)", () => {
   assert.equal(resolveProviderKind(envWith(undefined)), "mock");
   assert.equal(resolveProviderKind(envWith("false")), "mock");
   assert.equal(resolveProviderKind(envWith("")), "mock");
+  assert.equal(resolveProviderKind({}), "mock");
   assert.equal(isRealProviderEnabled(envWith(undefined)), false);
+  assert.equal(isRealProviderEnabled({}), false);
 });
 
 test("17. feature flag true selects the API provider", () => {
   assert.equal(resolveProviderKind(envWith("true")), "real");
   assert.equal(resolveProviderKind(envWith("1")), "real");
+  assert.equal(resolveProviderKind({ NEXT_PUBLIC_USE_REAL_PROVIDER: "true" }), "real");
+  assert.equal(resolveProviderKind({ NEXT_PUBLIC_USE_REAL_PROVIDER: "1" }), "real");
+  assert.equal(resolveProviderKind({ NEXT_PUBLIC_USE_REAL_PROVIDER: "false" }), "mock");
   assert.equal(isRealProviderEnabled(envWith("true")), true);
 });
 
